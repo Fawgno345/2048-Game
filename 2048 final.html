@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>2048 con Modalità Multiple e Salvataggio Sicuro</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #faf8ef;
+    margin: 0; padding: 20px;
+    display: flex; flex-direction: column; align-items: center;
+    user-select: none;
+  }
+  h1 {
+    margin-bottom: 5px;
+    color: #776e65;
+  }
+  #controls {
+    margin-bottom: 15px;
+  }
+  #size-select {
+    font-size: 16px;
+    padding: 5px 10px;
+  }
+  #scoreboard {
+    margin-bottom: 15px;
+    color: #776e65;
+  }
+  #game-container {
+    background: #bbada0;
+    border-radius: 6px;
+    padding: 10px;
+    display: grid;
+    gap: 10px;
+    touch-action: none;
+    user-select: none;
+  }
+  .tile {
+    background: #cdc1b4;
+    border-radius: 3px;
+    font-weight: bold;
+    color: #776e65;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 2rem;
+    height: 80px;
+    width: 80px;
+    transition: background-color 0.3s ease;
+  }
+  .tile[data-value="2"] { background: #eee4da; color: #776e65; }
+  .tile[data-value="4"] { background: #ede0c8; color: #776e65; }
+  .tile[data-value="8"] { background: #f2b179; color: #f9f6f2; }
+  .tile[data-value="16"] { background: #f59563; color: #f9f6f2; }
+  .tile[data-value="32"] { background: #f67c5f; color: #f9f6f2; }
+  .tile[data-value="64"] { background: #f65e3b; color: #f9f6f2; }
+  .tile[data-value="128"] { background: #edcf72; color: #f9f6f2; font-size: 1.6rem; }
+  .tile[data-value="256"] { background: #edcc61; color: #f9f6f2; font-size: 1.6rem; }
+  .tile[data-value="512"] { background: #edc850; color: #f9f6f2; font-size: 1.6rem; }
+  .tile[data-value="1024"] { background: #edc53f; color: #f9f6f2; font-size: 1.4rem; }
+  .tile[data-value="2048"] { background: #edc22e; color: #f9f6f2; font-size: 1.4rem; }
+  #message {
+    margin-top: 10px;
+    font-size: 1.2rem;
+    color: #776e65;
+    min-height: 1.5em;
+  }
+  button {
+    padding: 6px 12px;
+    background-color: #8f7a66;
+    border: none;
+    border-radius: 3px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    margin-left: 10px;
+  }
+  button:hover {
+    background-color: #9f8b76;
+  }
+</style>
+</head>
+<body>
+
+<h1>2048 Modalità Multiple</h1>
+
+<div id="controls">
+  <label for="size-select">Seleziona Modalità (dimensione tabellone):</label>
+  <select id="size-select">
+    <option value="3">3 x 3</option>
+    <option value="4" selected>4 x 4 (Classica)</option>
+    <option value="5">5 x 5</option>
+    <option value="6">6 x 6</option>
+    <option value="7">7 x 7</option>
+    <option value="8">8 x 8</option>
+    <option value="9">9 x 9</option>
+  </select>
+  <button id="new-game-btn">Nuova Partita</button>
+</div>
+
+<div id="scoreboard">
+  Punteggio: <span id="score">0</span> | Record: <span id="high-score">0</span>
+</div>
+
+<div id="game-container"></div>
+
+<div id="message"></div>
+
+<script>
+(() => {
+  let size = 4;
+  let board = [];
+  let score = 0;
+  let highScore = 0;
+
+  const gameContainer = document.getElementById('game-container');
+  const scoreElem = document.getElementById('score');
+  const highScoreElem = document.getElementById('high-score');
+  const messageElem = document.getElementById('message');
+  const sizeSelect = document.getElementById('size-select');
+  const newGameBtn = document.getElementById('new-game-btn');
+
+  // Ritorna la chiave di storage specifica per la modalità
+  function getStorageKey(modeSize) {
+    return `2048-save-${modeSize}`;
+  }
+
+  function createEmptyBoard(s) {
+    return Array.from({length: s}, () => Array(s).fill(0));
+  }
+
+  // Salva lo stato attuale per la modalità corrente
+  function saveGame() {
+    const key = getStorageKey(size);
+    const data = {
+      size,
+      board,
+      score,
+      highScore,
+    };
+    localStorage.setItem(key, JSON.stringify(data));
+  }
+
+  // Carica salvataggio se esiste, per la modalità specificata
+  function loadGame(s) {
+    const key = getStorageKey(s);
+    const dataRaw = localStorage.getItem(key);
+    if (!dataRaw) return false;
+    try {
+      const data = JSON.parse(dataRaw);
+      if (data.size === s && data.board && data.score !== undefined && data.highScore !== undefined) {
+        size = s;
+        board = data.board;
+        score = data.score;
+        highScore = data.highScore;
+        sizeSelect.value = size;
+        return true;
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
+  // Aggiunge nuova tessera casuale (2 o 4)
+  function addRandomTile() {
+    const emptyCells = [];
+    for(let r=0; r<size; r++) {
+      for(let c=0; c<size; c++) {
+        if(board[r][c] === 0) emptyCells.push([r, c]);
+      }
+    }
+    if(emptyCells.length === 0) return false;
+    const [r,c] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    board[r][c] = Math.random() < 0.9 ? 2 : 4;
+    return true;
+  }
+
+  // Renderizza la griglia e punteggi
+  function render() {
+    gameContainer.innerHTML = '';
+    gameContainer.style.gridTemplateColumns = `repeat(${size}, 80px)`;
+    gameContainer.style.gridTemplateRows = `repeat(${size}, 80px)`;
+
+    for(let r=0; r<size; r++) {
+      for(let c=0; c<size; c++) {
+        const val = board[r][c];
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        if(val !== 0) {
+          tile.textContent = val;
+          tile.dataset.value = val;
+        } else {
+          tile.textContent = '';
+          tile.removeAttribute('data-value');
+        }
+        gameContainer.appendChild(tile);
+      }
+    }
+
+    scoreElem.textContent = score;
+    highScoreElem.textContent = highScore;
+    messageElem.textContent = '';
+  }
+
+  // Slide e combina le tessere su array 1D
+  function slideArray(arr) {
+    let filtered = arr.filter(v => v !== 0);
+    for(let i=0; i < filtered.length -1; i++) {
+      if(filtered[i] === filtered[i+1]) {
+        filtered[i] *= 2;
+        score += filtered[i];
+        filtered[i+1] = 0;
+        i++;
+      }
+    }
+    filtered = filtered.filter(v => v !== 0);
+    while(filtered.length < size) filtered.push(0);
+    return filtered;
+  }
+
+  // Muove le tessere in una direzione; ritorna true se si muove qualcosa
+  function move(direction) {
+    let moved = false;
+    switch(direction) {
+      case 'left':
+        for(let r=0; r<size; r++) {
+          const oldRow = board[r].slice();
+          const newRow = slideArray(oldRow);
+          if(newRow.toString() !== oldRow.toString()) moved = true;
+          board[r] = newRow;
+        }
+        break;
+      case 'right':
+        for(let r=0; r<size; r++) {
+          const oldRow = board[r].slice();
+          let reversed = oldRow.slice().reverse();
+          reversed = slideArray(reversed);
+          reversed.reverse();
+          if(reversed.toString() !== oldRow.toString()) moved = true;
+          board[r] = reversed;
+        }
+        break;
+      case 'up':
+        for(let c=0; c<size; c++) {
+          let col = [];
+          for(let r=0; r<size; r++) col.push(board[r][c]);
+          const oldCol = col.slice();
+          col = slideArray(col);
+          if(col.toString() !== oldCol.toString()) moved = true;
+          for(let r=0; r<size; r++) board[r][c] = col[r];
+        }
+        break;
+      case 'down':
+        for(let c=0; c<size; c++) {
+          let col = [];
+          for(let r=0; r<size; r++) col.push(board[r][c]);
+          const oldCol = col.slice();
+          col.reverse();
