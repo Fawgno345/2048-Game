@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>2048 con Tabellone Variabile e Touch</title>
+<style>
+  body {
+    margin: 0; padding: 20px;
+    background: #faf8ef;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    user-select: none;
+  }
+  h1 {
+    margin-bottom: 10px;
+    color: #776e65;
+  }
+  #controls {
+    margin-bottom: 15px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  select, button {
+    font-size: 16px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    cursor: pointer;
+  }
+  #scoreboard {
+    margin-bottom: 20px;
+    font-size: 18px;
+    color: #776e65;
+  }
+  #game-container {
+    display: grid;
+    gap: 12px;
+    background: #bbada0;
+    border-radius: 8px;
+    padding: 12px;
+    touch-action: none; /* importante per swipe */
+    max-width: 90vmin;
+    max-height: 90vmin;
+    aspect-ratio: 1 / 1;
+  }
+  .tile {
+    border-radius: 6px;
+    background: #cdc1b4;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: 700;
+    color: #776e65;
+    font-size: calc(60vmin / var(--size));
+    user-select: none;
+    transition: background-color 0.25s ease, transform 0.15s ease;
+    will-change: transform;
+  }
+  .tile[data-value="2"] { background: #eee4da; color: #776e65; }
+  .tile[data-value="4"] { background: #ede0c8; color: #776e65; }
+  .tile[data-value="8"] { background: #f2b179; color: #f9f6f2; }
+  .tile[data-value="16"] { background: #f59563; color: #f9f6f2; }
+  .tile[data-value="32"] { background: #f67c5f; color: #f9f6f2; }
+  .tile[data-value="64"] { background: #f65e3b; color: #f9f6f2; }
+  .tile[data-value="128"] { background: #edcf72; color: #f9f6f2; font-size: calc(50vmin / var(--size)); }
+  .tile[data-value="256"] { background: #edcc61; color: #f9f6f2; font-size: calc(50vmin / var(--size)); }
+  .tile[data-value="512"] { background: #edc850; color: #f9f6f2; font-size: calc(50vmin / var(--size)); }
+  .tile[data-value="1024"] { background: #edc53f; color: #f9f6f2; font-size: calc(40vmin / var(--size)); }
+  .tile[data-value="2048"] { background: #edc22e; color: #f9f6f2; font-size: calc(40vmin / var(--size)); }
+
+  .tile.new-tile {
+    animation: popin 0.3s ease forwards;
+  }
+  @keyframes popin {
+    0% { transform: scale(0); }
+    100% { transform: scale(1); }
+  }
+  #message {
+    margin-top: 15px;
+    font-size: 1.3rem;
+    color: #776e65;
+    min-height: 1.5rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>2048 Personalizzato</h1>
+
+<div id="controls">
+  <label for="size-select">Dimensione tabellone:</label>
+  <select id="size-select" aria-label="Seleziona dimensione tabellone">
+    <option value="3">3 x 3</option>
+    <option value="4" selected>4 x 4</option>
+    <option value="5">5 x 5</option>
+    <option value="6">6 x 6</option>
+    <option value="7">7 x 7</option>
+    <option value="8">8 x 8</option>
+    <option value="9">9 x 9</option>
+  </select>
+  <button id="new-game-btn" aria-label="Inizia nuova partita">Nuova Partita</button>
+</div>
+
+<div id="scoreboard" aria-live="polite">
+  Punteggio: <span id="score">0</span> | Record: <span id="best-score">0</span>
+</div>
+
+<div id="game-container" role="grid" aria-label="Tabellone di gioco 2048" style="--size:4"></div>
+
+<div id="message" role="alert" aria-live="assertive"></div>
+
+<script>
+(() => {
+  const container = document.getElementById('game-container');
+  const scoreEl = document.getElementById('score');
+  const bestScoreEl = document.getElementById('best-score');
+  const sizeSelect = document.getElementById('size-select');
+  const newGameBtn = document.getElementById('new-game-btn');
+  const messageEl = document.getElementById('message');
+
+  let size = parseInt(sizeSelect.value);
+  let board = [];
+  let score = 0;
+  let bestScore = 0;
+
+  // Load saved game if available
+  function loadGame() {
+    const savedSize = localStorage.getItem('2048-size');
+    const savedBoard = localStorage.getItem(`2048-board-${savedSize}`);
+    const savedScore = localStorage.getItem(`2048-score-${savedSize}`);
+    const savedBest = localStorage.getItem('2048-bestScore');
+    if(savedSize && savedBoard && savedScore && savedSize == size) {
+      size = parseInt(savedSize);
+      board = JSON.parse(savedBoard);
+      score = parseInt(savedScore);
+      bestScore = savedBest ? parseInt(savedBest) : 0;
+      sizeSelect.value = size;
+      return true;
+    }
+    return false;
+  }
+
+  // Save game state
+  function saveGame() {
+    localStorage.setItem('2048-size', size);
+    localStorage.setItem(`2048-board-${size}`, JSON.stringify(board));
+    localStorage.setItem(`2048-score-${size}`, score);
+    if(score > bestScore) {
+      bestScore = score;
+      localStorage.setItem('2048-bestScore', bestScore);
+    }
+  }
+
+  // Init new game
+  function initGame() {
+    board = Array(size*size).fill(0);
+    score = 0;
+    messageEl.textContent = '';
+    addRandomTile();
+    addRandomTile();
+    render();
+    saveGame();
+  }
+
+  // Render board
+  function render() {
+    container.style.setProperty('--size', size);
+    container.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+    container.style.gridTemplateRows = `repeat(${size}, 1fr)`;
+    container.innerHTML = '';
+    board.forEach((value, i) => {
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      if(value > 0) {
+        tile.textContent = value;
+        tile.dataset.value = value;
+        tile.classList.add('new-tile');
+        setTimeout(() => tile.classList.remove('new-tile'), 300);
+      } else {
+        tile.textContent = '';
+        tile.dataset.value = 0;
+      }
+      tile.setAttribute('role', 'gridcell');
+      container.appendChild(tile);
+    });
+    scoreEl.textContent = score;
+    bestScoreEl.textContent = bestScore;
+  }
+
+  // Add random tile (2 or 4) to empty position
+  function addRandomTile() {
+    const empties = [];
+    board.forEach((v,i) => { if(v === 0) empties.push(i); });
+    if(empties.length === 0) return false;
+    const pos = empties[Math.floor(Math.random()*empties.length)];
+    board[pos] = Math.random() < 0.9 ? 2 : 4;
+    return true;
+  }
+
+  // Check if game is over
+  function isGameOver() {
+    if(board.includes(0)) return false;
+    // Check horizontal and vertical neighbors
+    for(let r=0; r<size; r++) {
+      for(let c=0; c<size; c++) {
+        const idx = r*size + c;
+        const val = board[idx];
+        if(c < size-1 && board[idx+1] === val) return false;
+        if(r < size-1 && board[idx+size] === val) return false;
+      }
+    }
+    return true;
+  }
+
+  // Move logic helpers
+  function slide(row) {
+    let arr = row.filter(v => v !== 0);
+    let gained = 0;
+    for(let i=0; i<arr.length-1; i++) {
+      if(arr[i] === arr[i+1]) {
+        arr[i] *= 2;
+        gained += arr[i];
+        arr.splice(i+1,1);
+      }
+    }
+    while(arr.length < size) arr.push(0);
+    return {arr, gained};
+  }
+
+  function move(direction) {
+    let moved = false;
+    let gainedTotal = 0;
+    let newBoard = board.slice();
+
+    const getIdx = (r,c) => r*size + c;
+
+    if(direction === 'left' || direction === 'right') {
+      for(let r=0; r<size; r++) {
+        let line = [];
+        for(let c=0; c<size; c++) line.push(board[getIdx(r,c)]);
+        if(direction === 'right') line.reverse();
+        const {arr, gained} = slide(line);
+        gainedTotal += gained;
+        if(direction === 'right') arr.reverse();
+        for(let c=0; c<size; c++) {
+          if(newBoard[getIdx(r,c)] !== arr[c]) {
+            moved = true;
+            newBoard[getIdx(r,c)] = arr[c];
+          }
+        }
+      }
+    } else {
+      for(let c=0; c<size; c++) {
+        let line = [];
+        for(let r=0; r<size; r++) line.push(board[getIdx(r,c)]);
+        if(direction === 'down') line.reverse();
+        const {arr, gained} = slide(line);
+        gainedTotal += gained;
+        if(direction === 'down') arr.reverse();
+        for(let r=0; r<size; r++) {
+          if(newBoard[getIdx(r,c)] !== arr[r]) {
+            moved = true;
+            newBoard[getIdx(r,c)] = arr[r];
+          }
+        }
+      }
+    }
+
+    if(moved) {
+      board = newBoard;
+      score += gainedTotal;
+      addRandomTile();
+      render();
+      saveGame();
+      if(isGameOver()) {
+        messageEl.textContent = 'Game Over! Premi "Nuova Partita" per ricominciare.';
+      } else {
+        messageEl.textContent = '';
+      }
+    }
+  }
+
+  // Handle keyboard arrows
+  window.addEventListener('keydown', e => {
+    if(messageEl.textContent) return; // blocca se game over
+    switch(e.key) {
+      case 'ArrowUp': move('up'); e.preventDefault(); break;
+      case 'ArrowDown': move('down'); e.preventDefault(); break;
+      case 'ArrowLeft': move('left'); e.preventDefault(); break;
+      case 'ArrowRight': move('right'); e.preventDefault(); break;
+    }
+  });
+
+  // Handle swipe touch
+  let touchStartX = 0, touchStartY = 0;
+  const threshold = 30;
+
+  container.addEventListener('touchstart', e => {
+    if(e.touches.length === 1) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }
+  });
+
+  container.addEventListener('touchend', e => {
+    if(messageEl.textContent) return;
+    if(e.changedTouches.length === 1) {
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      if(Math.abs(dx) > Math.abs(dy)) {
+        if(dx > threshold) move('right');
+        else if(dx < -threshold) move('left');
+      } else {
+        if(dy > threshold) move('down');
+        else if(dy < -threshold) move('up');
+      }
+    }
+  });
+
+  // On change board size
+  sizeSelect.addEventListener('change', () => {
+    size = parseInt(sizeSelect.value);
+    container.style.setProperty('--size', size);
+    initGame();
+  });
+
+  newGameBtn.addEventListener('click', () => {
+    initGame();
+  });
+
+  // Avvio
+  container.style.setProperty('--size', size);
+  if(!loadGame()) initGame();
+  else render();
+
+})();
+</script>
+
+</body>
+</html>
